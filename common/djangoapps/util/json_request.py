@@ -5,7 +5,10 @@ from django.core.serializers import serialize
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models.query import QuerySet
 from django.http import HttpResponse, HttpResponseBadRequest
+from bson import json_util
 
+# http://effbot.org/zone/default-values.htm
+_SENTINEL=object()
 
 class EDXJSONEncoder(DjangoJSONEncoder):
     """
@@ -66,7 +69,20 @@ class JsonResponse(HttpResponse):
         elif isinstance(resp_obj, QuerySet):
             content = serialize('json', resp_obj)
         else:
-            content = json.dumps(resp_obj, cls=encoder, indent=2, ensure_ascii=False)
+            try:
+                # This works
+                content = json.dumps(resp_obj, cls=encoder, indent=2, ensure_ascii=False)
+            except Exception as e:
+                # This is the right behaviour
+                # obsoleted by 
+                # https://github.com/edx/edx-platform/pull/12301/commits/83a7ceaa6a0663bf8e7d9354760b93ed3d3c277d
+                import logging
+                logger = logging.getLogger(__name__)
+                content = json.dumps(resp_obj, cls=encoder, indent=2)
+                logger.exception("checking exception passed JUL")
+
+		
+
         kwargs.setdefault("content_type", "application/json")
         if status:
             kwargs["status"] = status
@@ -83,11 +99,17 @@ class JsonResponseBadRequest(HttpResponseBadRequest):
         status: 400
         encoder: DjangoJSONEncoder
     """
-    def __init__(self, obj=None, status=400, encoder=DjangoJSONEncoder, *args, **kwargs):
-        if obj in (None, ""):
+    def __init__(self, obj=_SENTINEL, status=400, encoder=DjangoJSONEncoder, *args, **kwargs):
+        if obj is _SENTINEL or obj in { "", None}:
             content = ""
         else:
-            content = json.dumps(obj, cls=encoder, indent=2, ensure_ascii=False)
+            try:
+                content = json.dumps(obj, cls=encoder, indent=2, ensure_ascii=False)
+            except Exception as e:
+                print e
+                content = json.dumps(obj, cls=encoder,default=json_util.default, indent=2, ensure_ascii=False)
+                pass
+                
         kwargs.setdefault("content_type", "application/json")
         kwargs["status"] = status
         super(JsonResponseBadRequest, self).__init__(content, *args, **kwargs)
