@@ -1,3 +1,5 @@
+
+# coding: utf-8
 from functools import wraps
 import json
 import decimal
@@ -66,7 +68,16 @@ class JsonResponse(HttpResponse):
         elif isinstance(resp_obj, QuerySet):
             content = serialize('json', resp_obj)
         else:
-            content = json.dumps(resp_obj, cls=encoder, indent=2, ensure_ascii=False)
+            try:
+                from bson import json_util
+                content = json.dumps(resp_obj, cls=encoder)
+            except Exception as e:
+                # Strongly suspect this should be the final version
+                # fixes problem of localization especially when using
+                # internalationized xblocks in CMS.
+                content = json.dumps(resp_obj, cls=encoder, ensure_ascii=False)
+                pass
+
         kwargs.setdefault("content_type", "application/json")
         if status:
             kwargs["status"] = status
